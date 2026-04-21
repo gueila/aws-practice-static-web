@@ -1,0 +1,57 @@
+name: Continuous Deployment
+
+on:
+  push:
+    branches:
+      - main
+      - staging
+
+permissions:
+  id-token: write # Necesario para OIDC
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::123456789012:role/GitHubActionRole # Tu ARN de Rol OIDC
+          aws-region: us-east-1
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+
+      - name: Terraform Init
+        run: terraform init
+        working-directory: ./terraform
+
+      - name: Select or Create Workspace
+        run: |
+          # Si la rama es main, el workspace es production. Si no, es staging.
+          ENVIRONMENT=${{ github.ref == 'refs/heads/main' && 'production' || 'staging' }}
+          terraform workspace select $ENVIRONMENT || terraform workspace new $ENVIRONMENT
+        working-directory: ./terraform
+
+      - name: Terraform Plan & Apply
+        run: |
+          terraform plan -out=tfplan
+          terraform apply -auto-approve tfplan
+        working-directory: ./terraform
+
+      - name: Deploy to S3
+        run: |
+          # Obtenemos el nombre del bucket desde los outputs de Terraform
+          BUCKET_NAME=$(terraform output -raw website_bucket_name)
+          aws s3 sync ../src/ s3://$BUCKET_NAME --delete
+        working-directory: ./terraform
+
+      - name: Invalidate CloudFront Cache
+        run: |
+          DISTRIBUTION_ID=$(terraform output -raw cloudfront_distribution_id)
+          aws cloudfront create-invalidation --distribution-id $DISTRIBUTION_ID --paths "/*"
+        working-directory: ./terraform

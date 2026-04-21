@@ -1,0 +1,14 @@
+# Ignorar la carpeta de binarios de Terraform en cualquier nivel
+**/.terraform/
+
+# Ignorar archivos de estado en cualquier nivel
+**/*.tfstate
+**/*.tfstate.backup
+
+# Ignorar planes y variables sensibles
+**/*.tfvars
+**/*.tfvars.json
+**/tfplan
+
+# Archivos del sistema
+.DS_Store
